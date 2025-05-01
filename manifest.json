@@ -1,0 +1,10 @@
+{
+  "domain": "soundbar_local",
+  "name": "Samsung Soundbar Local",
+  "version": "1.0",
+  "config_flow": true,
+  "iot_class": "local_polling",
+  "requirements": ["aiohttp>=3.8"],
+  "codeowners": ["@ZtF"],
+  "documentation": "https://github.com/ZtF/hass-samsung-soundbar-local"
+}
