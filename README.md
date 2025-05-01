@@ -1,0 +1,1 @@
+# hass-samsung-soundbar-local
