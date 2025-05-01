@@ -27,9 +27,9 @@ jobs:
         shell: "bash"
         run: |
           cd "${{ github.workspace }}"
-          zip release.zip -r ./
+          zip samsung_soundbar_local.zip -r ./
 
       - name: "Upload the ZIP file to the release"
         uses: softprops/action-gh-release@v0.1.15
         with:
-          files: ${{ github.workspace }}/release.zip
+          files: ${{ github.workspace }}/samsung_soundbar_local.zip
