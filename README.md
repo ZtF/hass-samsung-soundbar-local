@@ -46,8 +46,7 @@ The entity is exposed as `media_player.soundbar_<ipaddr>` and works with dashboa
 ## Installation
 
 Preferably using HACS custom repo. Or...
-
-1. **Download the latest ZIP** (this repo)
+1. **Download the latest ZIP** from the [releases](https://github.com/ZtF/hass-samsung-soundbar-local/releases) page.  
 2. Unzip to `<config>/custom_components/`
 3. Restart Home Assistant.  
 4. Go to **Settings → Devices & Services → + Add Integration**, search for  
