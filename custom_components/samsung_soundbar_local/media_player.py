@@ -4,15 +4,9 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.components.media_player import MediaPlayerEntity
-from homeassistant.components.media_player.const import (
-    SUPPORT_VOLUME_MUTE,
-    SUPPORT_VOLUME_SET,
-    SUPPORT_VOLUME_STEP,
-    SUPPORT_SELECT_SOURCE,
-    SUPPORT_SELECT_SOUND_MODE,
-    SUPPORT_TURN_OFF,
-    SUPPORT_TURN_ON,
+from homeassistant.components.media_player import (
+    MediaPlayerEntity,
+    MediaPlayerEntityFeature,
 )
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import callback
@@ -25,17 +19,26 @@ from .soundbar import AsyncSoundbar
 
 _LOGGER = logging.getLogger(__name__)
 
-_SUPPORTED = (
-    SUPPORT_TURN_ON
-    | SUPPORT_TURN_OFF
-    | SUPPORT_VOLUME_STEP
-    | SUPPORT_VOLUME_SET
-    | SUPPORT_VOLUME_MUTE
-    | SUPPORT_SELECT_SOURCE
-    | SUPPORT_SELECT_SOUND_MODE
+_SUPPORTED: MediaPlayerEntityFeature = (
+    MediaPlayerEntityFeature.TURN_ON
+    | MediaPlayerEntityFeature.TURN_OFF
+    | MediaPlayerEntityFeature.VOLUME_STEP
+    | MediaPlayerEntityFeature.VOLUME_SET
+    | MediaPlayerEntityFeature.VOLUME_MUTE
+    | MediaPlayerEntityFeature.SELECT_SOURCE
+    | MediaPlayerEntityFeature.SELECT_SOUND_MODE
 )
 
-_SOURCES = ["HDMI1", "E_ARC", "ARC", "DIG", "BT", "Wifi"]
+_SOURCES = [
+    "HDMI_IN1",
+    "HDMI_IN2",
+    "E_ARC",
+    "ARC",
+    "D_IN",
+    "BT",
+    "WIFI_IDLE",
+]
+
 _SOUND_MODES = [
     "STANDARD",
     "SURROUND",
@@ -49,6 +52,7 @@ _SOUND_MODES = [
 
 
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
+    """Set up the soundbar platform from a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator = data["coordinator"]
     soundbar: AsyncSoundbar = data["soundbar"]
@@ -57,7 +61,7 @@ async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
 
 
 class SoundbarLocalEntity(CoordinatorEntity, MediaPlayerEntity):
-    """Representation of the soundbar as Media Player."""
+    """Representation of the soundbar as a Media Player entity."""
 
     _attr_supported_features = _SUPPORTED
     _attr_source_list = _SOURCES
@@ -79,36 +83,36 @@ class SoundbarLocalEntity(CoordinatorEntity, MediaPlayerEntity):
         )
 
     # ---------- control ----------
-    async def async_turn_on(self):
+    async def async_turn_on(self) -> None:
         await self._soundbar.power_on()
         await self.coordinator.async_request_refresh()
 
-    async def async_turn_off(self):
+    async def async_turn_off(self) -> None:
         await self._soundbar.power_off()
         await self.coordinator.async_request_refresh()
 
-    async def async_volume_up(self):
+    async def async_volume_up(self) -> None:
         await self._soundbar.volume_up()
         await self.coordinator.async_request_refresh()
 
-    async def async_volume_down(self):
+    async def async_volume_down(self) -> None:
         await self._soundbar.volume_down()
         await self.coordinator.async_request_refresh()
 
-    async def async_set_volume_level(self, volume: float):
+    async def async_set_volume_level(self, volume: float) -> None:
         await self._soundbar.set_volume(int(volume * 100))
         await self.coordinator.async_request_refresh()
 
-    async def async_mute_volume(self, mute: bool):
+    async def async_mute_volume(self, mute: bool) -> None:
         if mute != self.is_volume_muted:
             await self._soundbar.mute_toggle()
             await self.coordinator.async_request_refresh()
 
-    async def async_select_source(self, source: str):
+    async def async_select_source(self, source: str) -> None:
         await self._soundbar.select_input(source)
         await self.coordinator.async_request_refresh()
 
-    async def async_select_sound_mode(self, sound_mode: str):
+    async def async_select_sound_mode(self, sound_mode: str) -> None:
         await self._soundbar.set_sound_mode(sound_mode)
         await self.coordinator.async_request_refresh()
 
