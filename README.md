@@ -17,8 +17,10 @@ No cloud, no SmartThings integration in Home Assistant – everything stays on y
 | Power control | `turn_on`, `turn_off` |
 | Audio | volume **set / step / mute** |
 | Subwoofer | woofer ± exposed as Home Assistant `button` entities |
-| Inputs | HDMI1, E-ARC, ARC, Digital, Bluetooth, Wi-Fi |
+| Inputs | HDMI1, HDMI2, E-ARC, ARC, Digital, Bluetooth, Wi-Fi |
 | Sound modes | Standard, Surround, Game, Movie, Music, Clear Voice, DTS Virtual X, Adaptive |
+| Attributes | current audio codec and device identifier exposed on the media player |
+| Options | configurable polling interval (5–300 s) via the integration's **Configure** dialog |
 
 The entity is exposed as `media_player.soundbar_<ipaddr>` and works with dashboards, automations and scripts just like any other media-player device.
 
@@ -35,8 +37,8 @@ The entity is exposed as `media_player.soundbar_<ipaddr>` and works with dashboa
 
 ## Requirements
 
-* Home Assistant 2024.3 or newer
-* Python 3.11 (bundled with HA OS / Container)
+* Home Assistant 2024.11 or newer
+* Python 3.12 (bundled with HA OS / Container)
 * Your soundbar **added to the Samsung SmartThings app, connected to Wi-Fi** and
   **“IP control” enabled** in the device settings.
   This setting allows the bar to produce an *Access Token* that the integration uses.

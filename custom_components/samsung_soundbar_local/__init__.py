@@ -16,6 +16,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import (
+    CONF_POLL_INTERVAL,
     CONF_VERIFY_SSL,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
@@ -44,13 +45,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except SoundbarApiError as err:
             raise UpdateFailed(err) from err
 
+    poll_interval = entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
         config_entry=entry,
         name=f"soundbar_{entry.data[CONF_HOST]}",
         update_method=_async_update_data,
-        update_interval=timedelta(seconds=DEFAULT_POLL_INTERVAL),
+        update_interval=timedelta(seconds=poll_interval),
     )
 
     await coordinator.async_config_entry_first_refresh()
@@ -60,8 +62,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "soundbar": soundbar,
     }
 
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the entry when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

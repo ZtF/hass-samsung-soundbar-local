@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Dict, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import aiohttp
 
@@ -20,6 +21,10 @@ class SoundbarApiError(Exception):
 
 class SoundbarAuthError(SoundbarApiError):
     """Raised when the soundbar rejects the access token."""
+
+
+class SoundbarConnectionError(SoundbarApiError):
+    """Raised when the soundbar cannot be reached."""
 
 
 class AsyncSoundbar:
@@ -38,13 +43,13 @@ class AsyncSoundbar:
         self._session = session
         self._verify_ssl = verify_ssl
         self._timeout = timeout
-        self._token: Optional[str] = None
+        self._token: str | None = None
         self._token_lock = asyncio.Lock()
         # None = unknown, True = supported, False = unsupported (use fallback)
-        self._has_set_volume: Optional[bool] = None
+        self._has_set_volume: bool | None = None
 
     # ------------------ internal helpers ------------------
-    async def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         raw = json.dumps(payload, separators=(",", ":"))
         try:
             async with asyncio.timeout(self._timeout):
@@ -60,7 +65,7 @@ class AsyncSoundbar:
                 resp.raise_for_status()
                 data = await resp.json()
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            raise SoundbarApiError(str(err)) from err
+            raise SoundbarConnectionError(str(err)) from err
 
         if "error" in data:
             err_payload = data["error"]
@@ -72,6 +77,8 @@ class AsyncSoundbar:
             if "token" in message.lower() or "auth" in message.lower():
                 raise SoundbarAuthError(message)
             raise SoundbarApiError(message)
+        if "result" not in data:
+            raise SoundbarApiError(f"Unexpected response: {data}")
         return data["result"]
 
     async def _ensure_token(self) -> None:
@@ -87,7 +94,7 @@ class AsyncSoundbar:
         result = await self._post(payload)
         self._token = result["AccessToken"]
 
-    async def _call(self, method: str, **params: Any) -> Dict[str, Any]:
+    async def _call(self, method: str, **params: Any) -> dict[str, Any]:
         if method == "createAccessToken":
             return await self._post(
                 {"jsonrpc": "2.0", "method": method, "id": 1}
@@ -95,9 +102,12 @@ class AsyncSoundbar:
 
         await self._ensure_token()
         params.setdefault("AccessToken", self._token)
-        payload: Dict[str, Any] = {"jsonrpc": "2.0", "method": method, "id": 1}
-        if params:
-            payload["params"] = params
+        payload: dict[str, Any] = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "id": 1,
+            "params": params,
+        }
 
         try:
             return await self._post(payload)
@@ -151,6 +161,10 @@ class AsyncSoundbar:
                 await self._call("setVolume", volume=level)
                 self._has_set_volume = True
                 return
+            except (SoundbarAuthError, SoundbarConnectionError):
+                # Transport or auth failure, not a missing method — don't
+                # permanently disable the direct setter.
+                raise
             except SoundbarApiError:
                 self._has_set_volume = False
 
@@ -189,13 +203,26 @@ class AsyncSoundbar:
     async def power_state(self) -> str:
         return (await self._call("powerControl"))["power"]
 
-    async def codec(self) -> Optional[str]:
+    async def codec(self) -> str | None:
         return (await self._call("getCodec")).get("codec")
 
-    async def identifier(self) -> Optional[str]:
+    async def identifier(self) -> str | None:
         return (await self._call("getIdentifier")).get("identifier")
 
-    async def status(self) -> Dict[str, Any]:
+    async def _optional(self, getter: Callable[[], Awaitable[Any]]) -> Any:
+        """Run an informational getter, returning None if unsupported.
+
+        Auth and transport errors still propagate so real outages are not
+        masked.
+        """
+        try:
+            return await getter()
+        except (SoundbarAuthError, SoundbarConnectionError):
+            raise
+        except SoundbarApiError:
+            return None
+
+    async def status(self) -> dict[str, Any]:
         """Return a consolidated status dict (queries run in parallel)."""
         power, volume, mute, src, mode, codec, ident = await asyncio.gather(
             self.power_state(),
@@ -203,8 +230,8 @@ class AsyncSoundbar:
             self.is_muted(),
             self.input(),
             self.sound_mode(),
-            self.codec(),
-            self.identifier(),
+            self._optional(self.codec),
+            self._optional(self.identifier),
         )
         return {
             "power": power,

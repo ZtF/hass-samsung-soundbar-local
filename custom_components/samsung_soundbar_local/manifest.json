@@ -1,7 +1,7 @@
 {
   "domain": "samsung_soundbar_local",
   "name": "Samsung Soundbar Local",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "config_flow": true,
   "iot_class": "local_polling",
   "requirements": [],

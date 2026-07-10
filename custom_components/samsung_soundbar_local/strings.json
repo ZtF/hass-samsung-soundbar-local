@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Samsung Soundbar Local",
+        "description": "Set up local control of your Samsung soundbar. Make sure IP control is enabled in the SmartThings app.",
+        "data": {
+          "host": "Host",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "host": "IP address or hostname of the soundbar.",
+          "verify_ssl": "Leave disabled unless you have installed a trusted certificate on the soundbar."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the soundbar. Check the host and that IP control is enabled."
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Samsung Soundbar Local options",
+        "data": {
+          "poll_interval": "Polling interval (seconds)"
+        },
+        "data_description": {
+          "poll_interval": "How often to poll the soundbar for state updates (5-300 seconds)."
+        }
+      }
+    }
+  }
+}
