@@ -45,27 +45,17 @@ class AsyncSoundbar:
         self._timeout = timeout
         self._token: str | None = None
         self._token_lock = asyncio.Lock()
+        # The soundbar's embedded HTTP server cannot handle concurrent
+        # connections (it resets them), so every request is serialized.
+        self._request_lock = asyncio.Lock()
         # None = unknown, True = supported, False = unsupported (use fallback)
         self._has_set_volume: bool | None = None
 
     # ------------------ internal helpers ------------------
     async def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         raw = json.dumps(payload, separators=(",", ":"))
-        try:
-            async with asyncio.timeout(self._timeout):
-                resp = await self._session.post(
-                    self._url,
-                    data=raw,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                    },
-                    ssl=self._verify_ssl,
-                )
-                resp.raise_for_status()
-                data = await resp.json()
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            raise SoundbarConnectionError(str(err)) from err
+        async with self._request_lock:
+            data = await self._post_locked(raw)
 
         if "error" in data:
             err_payload = data["error"]
@@ -80,6 +70,37 @@ class AsyncSoundbar:
         if "result" not in data:
             raise SoundbarApiError(f"Unexpected response: {data}")
         return data["result"]
+
+    async def _post_locked(self, raw: str) -> dict[str, Any]:
+        # A reset or disconnect on the first attempt usually means the
+        # device dropped the pooled keep-alive connection (or momentarily
+        # refused the connect); retry once on a fresh connection before
+        # giving up. The request was not processed in that case, so the
+        # retry is safe.
+        for attempt in range(2):
+            try:
+                async with asyncio.timeout(self._timeout):
+                    resp = await self._session.post(
+                        self._url,
+                        data=raw,
+                        headers={
+                            "Content-Type": "application/json",
+                            "Accept": "application/json",
+                        },
+                        ssl=self._verify_ssl,
+                    )
+                    resp.raise_for_status()
+                    return await resp.json()
+            except (
+                aiohttp.ServerDisconnectedError,
+                aiohttp.ClientOSError,
+            ) as err:
+                if attempt:
+                    raise SoundbarConnectionError(str(err)) from err
+                await asyncio.sleep(0.5)
+            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+                raise SoundbarConnectionError(str(err)) from err
+        raise SoundbarConnectionError("Request failed")  # unreachable
 
     async def _ensure_token(self) -> None:
         if self._token:
@@ -223,7 +244,11 @@ class AsyncSoundbar:
             return None
 
     async def status(self) -> dict[str, Any]:
-        """Return a consolidated status dict (queries run in parallel)."""
+        """Return a consolidated status dict.
+
+        The individual queries are serialized by the request lock — the
+        soundbar resets concurrent connections.
+        """
         power, volume, mute, src, mode, codec, ident = await asyncio.gather(
             self.power_state(),
             self.volume(),
