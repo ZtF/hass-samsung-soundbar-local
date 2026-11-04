@@ -37,9 +37,9 @@ The entity is exposed as `media_player.soundbar_<ipaddr>` and works with dashboa
 
 * Home Assistant 2023.12 or newer  
 * Python 3.11 (bundled with HA OS / Container)  
-* Your soundbar **added to the Samsung SmartThings app, connected to Wi-Fi** and  
-  **“IP control” enabled** in the device settings.  
-  This setting allows the bar to produce an *Access Token* that the integration uses.
+* Your soundbar added to SmartThings and connected to Wi-Fi. The integration needs
+  access to its local API on port 1516. Enable **IP control** in SmartThings when
+  that option is available for your model; some models do not expose it.
 
 ---
 
@@ -53,3 +53,14 @@ The entity is exposed as `media_player.soundbar_<ipaddr>` and works with dashboa
 3. Restart Home Assistant.  
 4. Go to **Settings → Devices & Services → + Add Integration**, search for  
 **“Samsung Soundbar Local”**, enter the soundbar’s IP address and confirm.
+
+## Connection troubleshooting
+
+Enter the **soundbar's** IP address, not the IP address of Home Assistant or your
+router. Find it in your router's connected devices list or in Home Assistant's
+**Settings → System → Network → DHCP Browser**. If setup cannot connect, check
+that the soundbar and Home Assistant can reach each other on the local network,
+then check for the **IP control** option in the soundbar's SmartThings settings.
+The absence of that option can mean the model or firmware does not expose the
+local API this integration needs. A successful connection does not guarantee
+that every command is supported by that model.

@@ -1,0 +1,17 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to a Samsung soundbar",
+        "description": "Enter the soundbar's IP address. Enable IP control in SmartThings if your model provides it.",
+        "data": {
+          "host": "Soundbar IP address",
+          "verify_ssl": "Verify SSL certificate"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach the soundbar's local API. Check its IP address, network connection, and IP control setting."
+    }
+  }
+}
