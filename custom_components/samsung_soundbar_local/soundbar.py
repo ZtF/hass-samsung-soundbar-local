@@ -46,23 +46,27 @@ class AsyncSoundbar:
         self._verify_ssl = verify_ssl
         self._timeout = timeout
         self._token: Optional[str] = None
+        self._volume_control_supported = True
+        # The soundbar's JSON-RPC server can't handle concurrent requests
+        self._lock = asyncio.Lock()
 
     # ------------------ internal helpers ------------------
     async def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         raw = json.dumps(payload, separators=(",", ":"))
         try:
-            async with async_timeout.timeout(self._timeout):
-                resp = await self._session.post(
-                    self._url,
-                    data=raw,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                    },
-                    ssl=self._verify_ssl,
-                )
-            resp.raise_for_status()
-            text = await resp.text()
+            async with self._lock:
+                async with async_timeout.timeout(self._timeout):
+                    resp = await self._session.post(
+                        self._url,
+                        data=raw,
+                        headers={
+                            "Content-Type": "application/json",
+                            "Accept": "application/json",
+                        },
+                        ssl=self._verify_ssl,
+                    )
+                    resp.raise_for_status()
+                    text = await resp.text()
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise SoundbarApiError(str(err)) from err
 
@@ -74,8 +78,7 @@ class AsyncSoundbar:
         if "error" in data:
             raise SoundbarApiError(data["error"])
         if "result" not in data:
-            # e.g. {"code": -32700, "message": "Parse error"} when the device
-            # rejects the request (stale token, too many sessions, ...)
+            # Some models or stale tokens return top-level {"code": ..., "message": ...}.
             raise SoundbarApiError(f"unexpected response: {data}")
         return data["result"]
 
@@ -122,6 +125,19 @@ class AsyncSoundbar:
     async def set_volume(self, level: int):
         if not 0 <= level <= 100:
             raise ValueError("Volume has to be in range 0–100")
+        if self._volume_control_supported:
+            try:
+                result = await self._call("volumeControl", volume=level)
+            except SoundbarApiError as err:
+                # Models without volumeControl ("Method not found") fall back to
+                # stepping with VOL_UP/VOL_DOWN
+                if "-32601" not in str(err):
+                    raise
+                self._volume_control_supported = False
+            else:
+                if not result.get("success", True):
+                    raise SoundbarApiError(f"Failed to set volume to {level}")
+                return
         current = await self.volume()
         while current != level:
             if current < level:

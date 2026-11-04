@@ -95,15 +95,22 @@ class SoundbarLocalEntity(CoordinatorEntity, MediaPlayerEntity):
 
     async def async_volume_up(self) -> None:
         await self._soundbar.volume_up()
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic_volume(self.coordinator.data.get("volume", 0) + 1)
 
     async def async_volume_down(self) -> None:
         await self._soundbar.volume_down()
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic_volume(self.coordinator.data.get("volume", 0) - 1)
 
     async def async_set_volume_level(self, volume: float) -> None:
-        await self._soundbar.set_volume(int(volume * 100))
-        await self.coordinator.async_request_refresh()
+        level = round(volume * 100)
+        await self._soundbar.set_volume(level)
+        self._set_optimistic_volume(level)
+
+    def _set_optimistic_volume(self, level: int) -> None:
+        # Publish the new volume immediately instead of waiting for a full
+        # status() poll (7 sequential requests); the next poll reconciles it.
+        level = max(0, min(100, level))
+        self.coordinator.async_set_updated_data({**self.coordinator.data, "volume": level})
 
     async def async_mute_volume(self, mute: bool) -> None:
         if mute != self.is_volume_muted:
