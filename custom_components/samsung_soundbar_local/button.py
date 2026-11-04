@@ -6,6 +6,7 @@ from collections.abc import Callable, Awaitable
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_HOST
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -18,13 +19,12 @@ async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities) -> Non
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator = data["coordinator"]
     soundbar: AsyncSoundbar = data["soundbar"]
-    host = entry.data["host"]
+    host = entry.data[CONF_HOST]
 
     async_add_entities(
         [
             SoundbarWooferButton(
                 coordinator,
-                soundbar,
                 host,
                 "woofer_plus",
                 "Woofer +",
@@ -32,7 +32,6 @@ async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities) -> Non
             ),
             SoundbarWooferButton(
                 coordinator,
-                soundbar,
                 host,
                 "woofer_minus",
                 "Woofer -",
@@ -49,14 +48,12 @@ class SoundbarWooferButton(CoordinatorEntity, ButtonEntity):
     def __init__(
         self,
         coordinator,
-        soundbar: AsyncSoundbar,
         host: str,
         unique_suffix: str,
         label: str,
         action: Callable[[], Awaitable[None]],
     ) -> None:
         super().__init__(coordinator)
-        self._soundbar = soundbar
         self._attr_unique_id = f"{host}_{unique_suffix}"
         self._attr_name = f"Soundbar {host} {label}"
         self._attr_device_info = DeviceInfo(
@@ -70,4 +67,3 @@ class SoundbarWooferButton(CoordinatorEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press."""
         await self._action()
-        await self.coordinator.async_request_refresh()

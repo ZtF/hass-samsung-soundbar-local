@@ -3,20 +3,22 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from homeassistant.components.media_player import (
     MediaPlayerDeviceClass,
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
 )
-from homeassistant.const import STATE_OFF, STATE_ON
+from homeassistant.const import CONF_HOST, STATE_OFF, STATE_ON
 from homeassistant.core import callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.config_entries import ConfigEntry
 
 from .const import DOMAIN
-from .soundbar import AsyncSoundbar
+from .soundbar import AsyncSoundbar, SoundbarApiError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,7 +76,7 @@ class SoundbarLocalEntity(CoordinatorEntity, MediaPlayerEntity):
         self._soundbar = soundbar
         self._entry = entry
 
-        host = entry.data["host"]
+        host = entry.data[CONF_HOST]
         self._attr_unique_id = host
         self._attr_name = f"Soundbar {host}"
         self._attr_device_info = DeviceInfo(
@@ -95,27 +97,31 @@ class SoundbarLocalEntity(CoordinatorEntity, MediaPlayerEntity):
 
     async def async_volume_up(self) -> None:
         await self._soundbar.volume_up()
-        self._set_optimistic_volume(self.coordinator.data.get("volume", 0) + 1)
+        await self._async_refresh_field("volume", self._soundbar.volume)
 
     async def async_volume_down(self) -> None:
         await self._soundbar.volume_down()
-        self._set_optimistic_volume(self.coordinator.data.get("volume", 0) - 1)
+        await self._async_refresh_field("volume", self._soundbar.volume)
 
     async def async_set_volume_level(self, volume: float) -> None:
         level = round(volume * 100)
         await self._soundbar.set_volume(level)
-        self._set_optimistic_volume(level)
-
-    def _set_optimistic_volume(self, level: int) -> None:
-        # Publish the new volume immediately instead of waiting for a full
-        # status() poll (7 sequential requests); the next poll reconciles it.
-        level = max(0, min(100, level))
-        self.coordinator.async_set_updated_data({**self.coordinator.data, "volume": level})
+        await self._async_refresh_field("volume", self._soundbar.volume)
 
     async def async_mute_volume(self, mute: bool) -> None:
-        if mute != self.is_volume_muted:
-            await self._soundbar.mute_toggle()
+        await self._soundbar.set_mute(mute)
+        await self._async_refresh_field("mute", self._soundbar.is_muted)
+
+    async def _async_refresh_field(
+        self, field: str, read_value: Callable[[], Awaitable[Any]]
+    ) -> None:
+        """Read back a changed field without waiting for a full status poll."""
+        try:
+            value = await read_value()
+        except (SoundbarApiError, KeyError, TypeError, ValueError):
             await self.coordinator.async_request_refresh()
+        else:
+            self.coordinator.async_set_updated_data({**self.coordinator.data, field: value})
 
     async def async_select_source(self, source: str) -> None:
         await self._soundbar.select_input(source)
@@ -133,11 +139,12 @@ class SoundbarLocalEntity(CoordinatorEntity, MediaPlayerEntity):
 
     @property
     def volume_level(self):
-        return self.coordinator.data.get("volume", 0) / 100
+        volume = self.coordinator.data.get("volume")
+        return volume / 100 if volume is not None else None
 
     @property
     def is_volume_muted(self):
-        return self.coordinator.data.get("mute", False)
+        return self.coordinator.data.get("mute")
 
     @property
     def source(self):

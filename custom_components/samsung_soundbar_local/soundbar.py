@@ -9,7 +9,7 @@ token this client is holding. Responses that carry neither "result" nor "error" 
 {"code": -32700, "message": "Parse error"} - are therefore expected, and used to crash
 the coordinator with a KeyError, leaving the media_player entity permanently unavailable
 because the token was never refreshed. They are now surfaced as SoundbarApiError, and a
-failed call re-authenticates once and retries.
+failed call re-authenticates once and retries, except for an unsupported method.
 """
 
 from __future__ import annotations
@@ -27,6 +27,10 @@ _LOGGER = logging.getLogger(__name__)
 
 class SoundbarApiError(Exception):
     """Raised when the soundbar API returns an error."""
+
+    def __init__(self, message: str, code: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class AsyncSoundbar:
@@ -47,6 +51,7 @@ class AsyncSoundbar:
         self._timeout = timeout
         self._token: Optional[str] = None
         self._volume_control_supported = True
+        self._mute_control_supported = True
         # The soundbar's JSON-RPC server can't handle concurrent requests
         self._lock = asyncio.Lock()
 
@@ -76,10 +81,11 @@ class AsyncSoundbar:
             raise SoundbarApiError(f"invalid JSON response: {text[:200]!r}") from err
 
         if "error" in data:
-            raise SoundbarApiError(data["error"])
+            error = data["error"]
+            raise SoundbarApiError(error, code=error.get("code") if isinstance(error, dict) else None)
         if "result" not in data:
             # Some models or stale tokens return top-level {"code": ..., "message": ...}.
-            raise SoundbarApiError(f"unexpected response: {data}")
+            raise SoundbarApiError(f"unexpected response: {data}", code=data.get("code"))
         return data["result"]
 
     async def _call(self, method: str, **params: Any):
@@ -95,8 +101,8 @@ class AsyncSoundbar:
             payload = {"jsonrpc": "2.0", "method": method, "id": 1, "params": params}
             try:
                 return await self._post(payload)
-            except SoundbarApiError:
-                if attempts >= 1:
+            except SoundbarApiError as err:
+                if err.code == -32601 or attempts >= 1:
                     raise
                 attempts += 1
                 # Drop the cached token and re-authenticate once.
@@ -131,7 +137,7 @@ class AsyncSoundbar:
             except SoundbarApiError as err:
                 # Models without volumeControl ("Method not found") fall back to
                 # stepping with VOL_UP/VOL_DOWN
-                if "-32601" not in str(err):
+                if err.code != -32601:
                     raise
                 self._volume_control_supported = False
             else:
@@ -146,6 +152,22 @@ class AsyncSoundbar:
             else:
                 await self.volume_down()
                 current -= 1
+
+    async def set_mute(self, mute: bool) -> None:
+        """Set mute, using the remote key when muteControl is unavailable."""
+        if self._mute_control_supported:
+            try:
+                result = await self._call("muteControl", mute=mute)
+            except SoundbarApiError as err:
+                if err.code != -32601:
+                    raise
+                self._mute_control_supported = False
+            else:
+                if not result.get("success", True):
+                    raise SoundbarApiError(f"Failed to set mute {mute}")
+                return
+        if await self.is_muted() != mute:
+            await self.mute_toggle()
 
     # Input & sound mode ---------------------
     async def select_input(self, src: str):
@@ -165,12 +187,26 @@ class AsyncSoundbar:
 
     async def status(self) -> Dict[str, Any]:
         """Return a consolidated status dict."""
+        power = await self.power_state()
+        optional_values = []
+        for getter in (
+            self.volume,
+            self.is_muted,
+            self.input,
+            self.sound_mode,
+            self.codec,
+            self.identifier,
+        ):
+            try:
+                optional_values.append(await getter())
+            except (SoundbarApiError, KeyError, TypeError, ValueError):
+                optional_values.append(None)
         return {
-            "power": await self.power_state(),
-            "volume": await self.volume(),
-            "mute": await self.is_muted(),
-            "input": await self.input(),
-            "sound_mode": await self.sound_mode(),
-            "codec": await self.codec(),
-            "identifier": await self.identifier(),
+            "power": power,
+            "volume": optional_values[0],
+            "mute": optional_values[1],
+            "input": optional_values[2],
+            "sound_mode": optional_values[3],
+            "codec": optional_values[4],
+            "identifier": optional_values[5],
         }
