@@ -16,7 +16,7 @@ No cloud, no SmartThings integration in Home Assistant – everything stays on y
 |----------|---------|
 | Power control | `turn_on`, `turn_off` |
 | Audio | volume **set / step / mute** |
-| Subwoofer | woofer ± (not presented to Home Assistant yet) |
+| Subwoofer | woofer ± |
 | Inputs | HDMI1, E-ARC, ARC, Digital, Bluetooth, Wi-Fi |
 | Sound modes | Standard, Surround, Game, Movie, Music, Clear Voice, DTS Virtual X, Adaptive |
 
