@@ -16,11 +16,19 @@ No cloud, no SmartThings integration in Home Assistant – everything stays on y
 |----------|---------|
 | Power control | `turn_on`, `turn_off` |
 | Audio | volume **set / step / mute** |
-| Subwoofer | woofer ± |
+| Subwoofer | woofer ± buttons, woofer level select (-12, -6 … +6) |
 | Inputs | HDMI1, E-ARC, ARC, Digital, Bluetooth, Wi-Fi |
 | Sound modes | Standard, Surround, Game, Movie, Music, Clear Voice, DTS Virtual X, Adaptive |
 
 The entity is exposed as `media_player.soundbar_<ipaddr>` and works with dashboards, automations and scripts just like any other media-player device.
+
+### Woofer level
+
+The woofer level select steps the level with the same `WOOFER_PLUS` / `WOOFER_MINUS`
+keys as the buttons. The local API cannot read the woofer level, so the select shows
+the last level it set (restored after a restart). If you change the level with the
+physical remote or the SmartThings app, the shown value will be off until you set it
+from Home Assistant again.
 
 ---
 
