@@ -111,8 +111,26 @@ entity.DeviceInfo = dict
 coordinator_module = module("homeassistant.helpers.update_coordinator")
 coordinator_module.CoordinatorEntity = type("CoordinatorEntity", (), {})
 
+real_const = load("test_soundbar_component._real_const", "const.py")
+const.WOOFER_LEVELS = real_const.WOOFER_LEVELS
+const.DEFAULT_WOOFER_LEVEL = real_const.DEFAULT_WOOFER_LEVEL
+select_component = module("homeassistant.components.select")
+select_component.SelectEntity = type("SelectEntity", (), {})
+ha_exceptions = module("homeassistant.exceptions")
+ha_exceptions.HomeAssistantError = type("HomeAssistantError", (Exception,), {})
+restore_state = module("homeassistant.helpers.restore_state")
+
+
+class RestoreEntity:
+    async def async_added_to_hass(self):
+        pass
+
+
+restore_state.RestoreEntity = RestoreEntity
+
 media_player_module = load("test_soundbar_component.media_player", "media_player.py")
 config_flow_module = load("test_soundbar_component.config_flow", "config_flow.py")
+select_module = load("test_soundbar_component.select", "select.py")
 
 
 class SoundbarStatusTests(unittest.IsolatedAsyncioTestCase):
@@ -415,6 +433,62 @@ class MediaPlayerAbsoluteControlTests(unittest.IsolatedAsyncioTestCase):
         await self.player.async_mute_volume(True)
         self.player.coordinator.async_request_refresh.assert_awaited_once()
         self.player.coordinator.async_set_updated_data.assert_not_called()
+
+
+class WooferSelectTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.select = object.__new__(select_module.SoundbarWooferSelect)
+        self.select._soundbar = Mock()
+        self.select._soundbar.sub_plus = AsyncMock()
+        self.select._soundbar.sub_minus = AsyncMock()
+        self.select._level = "0"
+        self.select._lock = asyncio.Lock()
+        self.select.async_write_ha_state = Mock()
+        sleep = patch.object(select_module.asyncio, "sleep", new=AsyncMock())
+        sleep.start()
+        self.addCleanup(sleep.stop)
+
+    async def test_steps_up_to_target(self):
+        await self.select.async_select_option("3")
+        self.assertEqual(self.select._soundbar.sub_plus.await_count, 3)
+        self.select._soundbar.sub_minus.assert_not_awaited()
+        self.assertEqual(self.select.current_option, "3")
+        self.select.async_write_ha_state.assert_called_once()
+
+    async def test_steps_down_across_gap_between_minus_6_and_minus_12(self):
+        await self.select.async_select_option("-12")
+        self.assertEqual(self.select._soundbar.sub_minus.await_count, 7)
+        self.select._soundbar.sub_plus.assert_not_awaited()
+        self.assertEqual(self.select.current_option, "-12")
+
+    async def test_same_level_sends_nothing(self):
+        await self.select.async_select_option("0")
+        self.select._soundbar.sub_plus.assert_not_awaited()
+        self.select._soundbar.sub_minus.assert_not_awaited()
+
+    async def test_invalid_option_is_rejected(self):
+        with self.assertRaises(ha_exceptions.HomeAssistantError):
+            await self.select.async_select_option("-7")
+        self.select._soundbar.sub_minus.assert_not_awaited()
+
+    async def test_failure_keeps_level_of_last_successful_press(self):
+        self.select._soundbar.sub_plus = AsyncMock(
+            side_effect=[None, soundbar_module.SoundbarApiError("offline")]
+        )
+        with self.assertRaises(ha_exceptions.HomeAssistantError):
+            await self.select.async_select_option("3")
+        self.assertEqual(self.select.current_option, "1")
+        self.select.async_write_ha_state.assert_called_once()
+
+    async def test_restores_last_level(self):
+        for restored, expected in (("-6", "-6"), ("unavailable", "0")):
+            self.select._level = "0"
+            self.select.async_get_last_state = AsyncMock(
+                return_value=types.SimpleNamespace(state=restored)
+            )
+            await self.select.async_added_to_hass()
+            self.assertEqual(self.select.current_option, expected)
+
 
 if __name__ == "__main__":
     unittest.main()
